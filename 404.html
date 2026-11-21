@@ -229,6 +229,7 @@ async function ligar() {
     return;
   }
   // daqui em diante a câmera já abriu: um erro aqui não pode virar "a câmera não abriu"
+  try { const v = stream.getVideoTracks()[0], a = stream.getAudioTracks()[0]; diag("OK câmera " + (v ? v.label : "?") + " | mic " + (a ? a.label : "?")); } catch (_) {}
   $("#cam").srcObject = stream; $("#aviso").hidden = true;
   try { $("#cam").play().catch(() => {}); } catch (e) {}
   try { espelho(); zoomPronto(); medidor(); await listaMics(); } catch (e) {}
@@ -239,7 +240,11 @@ async function ligar() {
 const UA = navigator.userAgent || "";
 const DENTRO_DE_APP = /Instagram|FBAN|FBAV|FB_IAB|TikTok|musical_ly|BytedanceWebview|LinkedInApp|Snapchat|Line\/|; wv\)/i.test(UA);
 const IOS = /iPhone|iPad|iPod/i.test(UA);
+function diag(texto) {
+  try { fetch(API, { method: "POST", body: JSON.stringify({ acao: "log", c: COD, texto: texto + " | " + UA + " | seguro:" + window.isSecureContext + " md:" + !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) + " | " + location.href }) }).catch(() => {}); } catch (_) {}
+}
 function explicaErro(e) {
+  diag("ERRO " + ((e && e.qual) || "camera") + " " + ((e && e.name) || "?") + ": " + ((e && e.message) || e));
   const nome = (e && e.name) || "Erro", qual = (e && e.qual) || "camera";
   const abrir = IOS ? "Toque nos três pontinhos (ou no ícone de compartilhar) e escolha “Abrir no Safari”." : "Toque nos três pontinhos e escolha “Abrir no Chrome” (ou no navegador).";
   let t = "A câmera não abriu", p = "";
@@ -355,12 +360,14 @@ setInterval(() => {
 
 // ---------------------------------------------------------------- nível e ganho automático
 // o iPhone entrega o som cru bem baixo: o ganho sobe sozinho até a fala chegar perto de -6 dB, com limitador de segurança
-let actx = null, analisador = null, analisadorPre = null, fonteMic = null, pico = -90, picoMaxPre = -90, ganhoNo = null, limitador = null, destinoSom = null, ganhoDb = 20;
+let somPronto = false, actx = null, analisador = null, analisadorPre = null, fonteMic = null, pico = -90, picoMaxPre = -90, ganhoNo = null, limitador = null, destinoSom = null, ganhoDb = 20;
 function aplicaGanho() { if (ganhoNo) { try { ganhoNo.gain.setTargetAtTime(Math.pow(10, ganhoDb / 20), actx.currentTime, 0.08); } catch (e) { ganhoNo.gain.value = Math.pow(10, ganhoDb / 20); } } }
 function medidor() {
   try {
     if (!actx) {
-      actx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+      const taxa = (stream.getAudioTracks()[0] && stream.getAudioTracks()[0].getSettings && stream.getAudioTracks()[0].getSettings().sampleRate) || 0;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      try { actx = taxa ? new AC({ sampleRate: taxa }) : new AC(); } catch (e) { actx = new AC(); }
       analisador = actx.createAnalyser(); analisador.fftSize = 2048;
       ganhoNo = actx.createGain();
       limitador = actx.createDynamicsCompressor();
@@ -371,6 +378,7 @@ function medidor() {
       desenhaNivel();
     }
     if (actx.state !== "running") { try { actx.resume(); } catch (e) {} }
+    somPronto = false;
     if (fonteMic) fonteMic.disconnect();
     fonteMic = actx.createMediaStreamSource(new MediaStream(stream.getAudioTracks()));
     // receptores sem fio costumam mandar a voz num canal só: junta os dois em mono
@@ -378,7 +386,7 @@ function medidor() {
     mono.channelCount = 1; mono.channelCountMode = "explicit"; mono.channelInterpretation = "speakers";
     fonteMic.connect(sep); sep.connect(mono, 0); sep.connect(mono, 1); mono.connect(ganhoNo); mono.connect(analisadorPre);
     picoMaxPre = -90; ganhoDb = 20;
-    aplicaGanho();
+    aplicaGanho(); somPronto = true;
   } catch (e) {}
 }
 function desenhaNivel() {
@@ -465,6 +473,7 @@ async function contagem() {
 let micGravado = "";
 $("#rec").onclick = async () => {
   if (!stream) return ligar();
+  if (!window.MediaRecorder && !rec) { $("#msg").textContent = "Este navegador não grava vídeo. " + (IOS ? "Atualize o iPhone (iOS 14.3 ou mais novo) e use o Safari." : "Use o Chrome atualizado."); diag("ERRO sem MediaRecorder"); return; }
   if (rec) { rec.stop(); return; }
   paraRevisao();
   y = 0; $("#txt").style.transform = "translateY(0)";
@@ -472,11 +481,12 @@ $("#rec").onclick = async () => {
   await contagem();
   tipo = melhorTipo(); pedacos = [];
   if (actx && actx.state !== "running") { try { await actx.resume(); } catch (e) {} }
-  const somOk = actx && actx.state === "running" && destinoSom && destinoSom.stream.getAudioTracks().length;
+  const somOk = somPronto && actx && actx.state === "running" && destinoSom && destinoSom.stream.getAudioTracks().length;
   const somGravado = somOk ? destinoSom.stream.getAudioTracks() : stream.getAudioTracks();
   const video = (formato === "story" && $("#quadro").captureStream) ? $("#quadro").captureStream(30).getVideoTracks() : stream.getVideoTracks();
   const fonte = new MediaStream([...video, ...somGravado]);
-  rec = new MediaRecorder(fonte, tipo ? { mimeType: tipo, videoBitsPerSecond: 8000000, audioBitsPerSecond: 256000 } : undefined);
+  try { rec = new MediaRecorder(fonte, tipo ? { mimeType: tipo, videoBitsPerSecond: 8000000, audioBitsPerSecond: 256000 } : undefined); }
+  catch (e) { try { rec = new MediaRecorder(fonte); tipo = rec.mimeType || ""; } catch (e2) { rec = null; diag("ERRO MediaRecorder " + e2.name + ": " + e2.message); $("#msg").textContent = "Não consegui gravar neste navegador (" + e2.name + "). Tente pelo " + (IOS ? "Safari." : "Chrome."); return; } }
   rec.ondataavailable = (e) => { if (e.data && e.data.size) pedacos.push(e.data); };
   rec.onstop = () => {
     if (formato === "story") fonte.getVideoTracks().forEach((t) => t.stop());
