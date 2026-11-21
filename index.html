@@ -520,7 +520,7 @@ $("#enviar").onclick = async () => {
   if (!API) return falha("Gravador sem configuração", "Avise a equipe: falta o endereço de envio.");
   if (!COD) return falha("Link incompleto", "Abra o link exatamente como a equipe mandou.");
   try {
-    const r = await fetch(API + (API.includes("?") ? "&" : "?") + "acao=roteiro&c=" + encodeURIComponent(COD));
+    const r = await fetch(API + (API.includes("?") ? "&" : "?") + "acao=roteiro&cod=" + encodeURIComponent(COD));
     const d = await r.json();
     if (!d.ok) return falha("Roteiro indisponível", d.erro || "Peça um link novo para a equipe.");
     R = d.roteiro; formato = R.formato === "inteira" ? "inteira" : "story";
