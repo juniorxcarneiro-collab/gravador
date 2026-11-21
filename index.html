@@ -99,7 +99,7 @@ button:focus-visible{outline:3px solid var(--amar);outline-offset:2px}
   <div id="barra" hidden><b></b></div>
   <div id="msg"></div>
 </div>
-<div id="aviso"><div><h1 id="avT">Carregando o roteiro…</h1><p id="avP">Leia o texto no alto da tela e grave cada parte. Cada vídeo enviado chega direto para a nossa equipe de edição.</p><button id="ligar" disabled>Ligar a câmera</button></div></div>
+<div id="aviso"><div><h1 id="avT">Carregando o roteiro…</h1><p id="avP">Leia o texto no alto da tela e grave cada parte. Cada vídeo enviado chega direto para a nossa equipe de edição.</p><button id="ligar" disabled>Ligar a câmera</button><br><button id="copiar" hidden style="margin-top:12px;background:rgba(255,255,255,.14)">Copiar o link</button></div></div>
 <script src="config.js"></script>
 <script>
 const $ = (s) => document.querySelector(s);
@@ -188,38 +188,87 @@ async function ligar() {
   const pedeVideo = async () => {
     if (R.formato === "inteira")
       return navigator.mediaDevices.getUserMedia({ video: { facingMode: fm, width: { ideal: 1440 }, height: { ideal: 1920 }, aspectRatio: { ideal: 0.75 }, frameRate: { ideal: 30 } } });
-    let primeiro = null;
+    let primeiro = null, ultimoErro = null;
     for (const v of PEDIDOS) {
       let s = null;
-      try { s = await navigator.mediaDevices.getUserMedia({ video: v }); } catch (e) { continue; }
+      try { s = await navigator.mediaDevices.getUserMedia({ video: v }); } catch (e) { ultimoErro = e; if (e.name === "NotAllowedError" || e.name === "SecurityError") break; continue; }
       if (!primeiro) primeiro = s;
       if (!emPeTela() || await medeEmPe(s)) { if (primeiro !== s) primeiro.getTracks().forEach((t) => t.stop()); return s; }
       if (s !== primeiro) s.getTracks().forEach((t) => t.stop());
     }
-    if (!primeiro) throw new Error("câmera");
-    return primeiro;
+    if (primeiro) return primeiro;
+    // último recurso: o pedido mais simples possível (alguns Android recusam qualquer medida)
+    if (!ultimoErro || (ultimoErro.name !== "NotAllowedError" && ultimoErro.name !== "SecurityError")) {
+      try { return await navigator.mediaDevices.getUserMedia({ video: true }); } catch (e) { ultimoErro = e; }
+    }
+    throw marca(ultimoErro || new Error("sem câmera"), "camera");
   };
+  const marca = (e, qual) => { try { e.qual = qual; } catch (_) {} return e; };
   try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw marca(new Error("sem acesso"), "navegador");
     // o microfone vem num pedido separado: no iPhone, pedir junto com a câmera ignora o microfone escolhido
     let som = null;
     if (micId) { try { som = await navigator.mediaDevices.getUserMedia({ audio: somPedido() }); } catch (e) { som = null; } }
     const vid = await pedeVideo();
-    if (!som) som = await navigator.mediaDevices.getUserMedia({ audio: (() => { const a = somPedido(); delete a.deviceId; return a; })() });
+    if (!som) {
+      try { som = await navigator.mediaDevices.getUserMedia({ audio: (() => { const a = somPedido(); delete a.deviceId; return a; })() }); }
+      catch (e) {
+        if (e.name === "NotAllowedError" || e.name === "SecurityError") { vid.getTracks().forEach((t) => t.stop()); throw marca(e, "microfone"); }
+        try { som = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (e2) { vid.getTracks().forEach((t) => t.stop()); throw marca(e2, "microfone"); }
+      }
+    }
     const f = som.getAudioTracks()[0];
     if (micId && f && f.getSettings().deviceId !== micId) {
       try { const s2 = await navigator.mediaDevices.getUserMedia({ audio: somPedido() }); som.getTracks().forEach((t) => t.stop()); som = s2; } catch (e) {}
     }
     stream = new MediaStream([...vid.getVideoTracks(), ...som.getAudioTracks()]);
-    $("#cam").srcObject = stream; $("#aviso").hidden = true;
-    espelho(); zoomPronto(); medidor(); await listaMics(); modo($("#depois").hidden ? "gravar" : "depois");
-    try { trava = await navigator.wakeLock.request("screen"); } catch (e) {}
   } catch (e) {
     $("#aviso").hidden = false;
-    $("#avT").textContent = "A câmera não abriu";
-    $("#avP").textContent = "Permita câmera e microfone para este site nas configurações do navegador e toque de novo. (" + (e.name || e) + ")";
+    explicaErro(e);
+    return;
   }
+  // daqui em diante a câmera já abriu: um erro aqui não pode virar "a câmera não abriu"
+  $("#cam").srcObject = stream; $("#aviso").hidden = true;
+  try { $("#cam").play().catch(() => {}); } catch (e) {}
+  try { espelho(); zoomPronto(); medidor(); await listaMics(); } catch (e) {}
+  modo($("#depois").hidden ? "gravar" : "depois");
+  try { trava = await navigator.wakeLock.request("screen"); } catch (e) {}
+}
+// navegador de dentro de app (Instagram, Facebook, TikTok, LinkedIn…): costuma bloquear câmera
+const UA = navigator.userAgent || "";
+const DENTRO_DE_APP = /Instagram|FBAN|FBAV|FB_IAB|TikTok|musical_ly|BytedanceWebview|LinkedInApp|Snapchat|Line\/|; wv\)/i.test(UA);
+const IOS = /iPhone|iPad|iPod/i.test(UA);
+function explicaErro(e) {
+  const nome = (e && e.name) || "Erro", qual = (e && e.qual) || "camera";
+  const abrir = IOS ? "Toque nos três pontinhos (ou no ícone de compartilhar) e escolha “Abrir no Safari”." : "Toque nos três pontinhos e escolha “Abrir no Chrome” (ou no navegador).";
+  let t = "A câmera não abriu", p = "";
+  if (qual === "navegador" || (DENTRO_DE_APP && nome !== "NotReadableError")) {
+    t = "Abra no navegador do celular";
+    p = "Este aplicativo não deixa usar a câmera aqui dentro. " + abrir + " Ou copie o link abaixo e cole no " + (IOS ? "Safari." : "Chrome.");
+  } else if (nome === "NotAllowedError" || nome === "SecurityError") {
+    t = qual === "microfone" ? "O microfone foi bloqueado" : "A câmera foi bloqueada";
+    p = IOS
+      ? "Toque em “aA” na barra de endereço do Safari → Ajustes do Site → Câmera e Microfone: Permitir. Depois toque em Ligar a câmera de novo. Se não aparecer: Ajustes do iPhone → Safari → Câmera e Microfone → Perguntar."
+      : "Toque no cadeado ao lado do endereço → Permissões → libere Câmera e Microfone. Depois toque em Ligar a câmera de novo.";
+  } else if (nome === "NotReadableError" || nome === "AbortError" || nome === "TrackStartError") {
+    t = qual === "microfone" ? "O microfone está ocupado" : "A câmera está ocupada";
+    p = "Outro aplicativo está usando " + (qual === "microfone" ? "o microfone" : "a câmera") + " (ligação, WhatsApp, Instagram, câmera aberta). Feche esses aplicativos e toque em Ligar a câmera de novo. Se continuar, reinicie o celular.";
+  } else if (nome === "NotFoundError" || nome === "OverconstrainedError" || nome === "DevicesNotFoundError") {
+    p = "O celular não mostrou nenhuma " + (qual === "microfone" ? "entrada de microfone" : "câmera") + " para o navegador. Feche e abra o link de novo; se continuar, tente pelo " + (IOS ? "Safari." : "Chrome.");
+  } else {
+    p = "Tente de novo. Se continuar, abra o link no " + (IOS ? "Safari" : "Chrome") + " e libere câmera e microfone.";
+  }
+  $("#avT").textContent = t;
+  $("#avP").textContent = p + " (código: " + qual + " · " + nome + ")";
+  $("#ligar").textContent = "Tentar de novo";
+  $("#copiar").hidden = false;
+}
+async function copiaLink() {
+  try { await navigator.clipboard.writeText(location.href); $("#copiar").textContent = "Link copiado ✓"; }
+  catch (e) { prompt("Copie o link:", location.href); }
 }
 $("#ligar").onclick = ligar;
+$("#copiar").onclick = () => copiaLink();
 
 // ---------------------------------------------------------------- microfone: a pessoa escolhe celular ou externo
 // som cru (sem os filtros de chamada de voz, que abafam e comprimem)
@@ -529,6 +578,8 @@ $("#enviar").onclick = async () => {
     $("#avP").textContent = (R.cliente ? "Olá, " + R.cliente.split(" ")[0] + "! " : "") + "São " + R.stories.length + " " + (R.stories.length > 1 ? "partes" : "parte") +
       ". O texto passa no alto da tela, perto da câmera. Grave, confira e toque em Enviar: o vídeo chega direto para a nossa equipe de edição.";
     $("#ligar").disabled = false;
+    // aberto dentro do Instagram/Facebook/TikTok: avisa antes, porque a câmera quase sempre falha ali
+    if (DENTRO_DE_APP) { $("#avP").textContent += " Dica: se a câmera não abrir, abra este link no " + (IOS ? "Safari" : "Chrome") + "."; $("#copiar").hidden = false; }
     const prox = R.stories.findIndex((_, i) => !feitos.has(i)); atual = prox >= 0 ? prox : 0;
     mostra();
   } catch (e) { falha("Sem conexão", "Confira a internet e abra o link de novo."); }
