@@ -248,7 +248,15 @@ function explicaErro(e) {
   const nome = (e && e.name) || "Erro", qual = (e && e.qual) || "camera";
   const abrir = IOS ? "Toque nos três pontinhos (ou no ícone de compartilhar) e escolha “Abrir no Safari”." : "Toque nos três pontinhos e escolha “Abrir no Chrome” (ou no navegador).";
   let t = "A câmera não abriu", p = "";
-  if (qual === "navegador" || (DENTRO_DE_APP && nome !== "NotReadableError")) {
+  const SAFARI = /Safari/i.test(UA) && !/CriOS|FxiOS|EdgiOS|GSA|Chrome|Android/i.test(UA);
+  if (qual === "navegador" && SAFARI && !DENTRO_DE_APP) {
+    // Safari sem acesso nenhum à câmera: quase sempre câmera/microfone em "Negar" nos ajustes do Safari
+    t = "Libere a câmera no Safari";
+    p = (/Macintosh/i.test(UA)
+      ? "No Mac: menu Safari → Ajustes → Sites → Câmera e Microfone → takepronto.github.io: Permitir."
+      : "No iPhone: Ajustes → Apps → Safari → Câmera: Perguntar (ou Permitir) e Microfone: Perguntar (ou Permitir).") +
+      " Depois feche esta aba e abra o link de novo.";
+  } else if (qual === "navegador" || (DENTRO_DE_APP && nome !== "NotReadableError")) {
     t = "Abra no navegador do celular";
     p = "Este aplicativo não deixa usar a câmera aqui dentro. " + abrir + " Ou copie o link abaixo e cole no " + (IOS ? "Safari." : "Chrome.");
   } else if (nome === "NotAllowedError" || nome === "SecurityError") {
