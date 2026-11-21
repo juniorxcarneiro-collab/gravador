@@ -100,11 +100,12 @@ button:focus-visible{outline:3px solid var(--amar);outline-offset:2px}
   <div id="msg"></div>
 </div>
 <div id="aviso"><div><h1 id="avT">Carregando o roteiro…</h1><p id="avP">Leia o texto no alto da tela e grave cada parte. Cada vídeo enviado chega direto para a nossa equipe de edição.</p><button id="ligar" disabled>Ligar a câmera</button><br><button id="copiar" hidden style="margin-top:12px;background:rgba(255,255,255,.14)">Copiar o link</button></div></div>
-<script src="config.js"></script>
+<script src="/config.js"></script>
 <script>
 const $ = (s) => document.querySelector(s);
 const API = window.GRAVADOR_API || "";
-const COD = (new URLSearchParams(location.search).get("c") || "").trim();
+// link curto: take-um.github.io/<código>  (o GitHub entrega esta mesma página como 404.html); o antigo ?c=<código> continua valendo
+const COD = ((new URLSearchParams(location.search).get("c") || location.pathname.split("/").filter((s) => s && s !== "index.html" && s !== "404.html").pop() || "") + "").trim().toLowerCase();
 let R = { titulo: "", item: "Parte", stories: [] }, atual = 0, stream = null, rec = null, pedacos = [], blob = null, tipo = "";
 let rolando = false, y = 0, ultimo = 0, t0 = 0, relogio = null, trava = null;
 const feitos = new Set();
