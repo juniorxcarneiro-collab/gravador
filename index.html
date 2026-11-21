@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="robots" content="noindex,nofollow">
-<title>Gravador de roteiro</title>
+<title>TakePronto</title>
 <style>
 :root{--bg:#05080f;--ink:#f8fafc;--dim:#94a3b8;--azul:#3b82f6;--rec:#ef4444;--ok:#22c55e;--amar:#facc15;--vidro:rgba(5,8,15,.62)}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -99,7 +99,7 @@ button:focus-visible{outline:3px solid var(--amar);outline-offset:2px}
   <div id="barra" hidden><b></b></div>
   <div id="msg"></div>
 </div>
-<div id="aviso"><div><h1 id="avT">Carregando o roteiro…</h1><p id="avP">Leia o texto no alto da tela e grave cada parte. Cada vídeo enviado chega direto para a nossa equipe de edição.</p><button id="ligar" disabled>Ligar a câmera</button><br><button id="copiar" hidden style="margin-top:12px;background:rgba(255,255,255,.14)">Copiar o link</button></div></div>
+<div id="aviso"><div><div style="font:800 15px system-ui;letter-spacing:.14em;text-transform:uppercase;color:var(--azul);margin-bottom:14px">TakePronto</div><h1 id="avT">Carregando o roteiro…</h1><p id="avP">Leia o texto no alto da tela e grave cada parte. Cada vídeo enviado chega direto para a nossa equipe de edição.</p><button id="ligar" disabled>Ligar a câmera</button><br><button id="copiar" hidden style="margin-top:12px;background:rgba(255,255,255,.14)">Copiar o link</button></div></div>
 <script src="/config.js"></script>
 <script>
 const $ = (s) => document.querySelector(s);
@@ -574,7 +574,7 @@ $("#enviar").onclick = async () => {
     const d = await r.json();
     if (!d.ok) return falha("Roteiro indisponível", d.erro || "Peça um link novo para a equipe.");
     R = d.roteiro; formato = R.formato === "inteira" ? "inteira" : "story";
-    document.title = R.titulo || "Gravador de roteiro";
+    document.title = (R.titulo ? R.titulo + " · " : "") + "TakePronto";
     $("#avT").textContent = R.titulo || "Seu roteiro";
     $("#avP").textContent = (R.cliente ? "Olá, " + R.cliente.split(" ")[0] + "! " : "") + "São " + R.stories.length + " " + (R.stories.length > 1 ? "partes" : "parte") +
       ". O texto passa no alto da tela, perto da câmera. Grave, confira e toque em Enviar: o vídeo chega direto para a nossa equipe de edição.";
